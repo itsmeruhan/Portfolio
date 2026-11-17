@@ -18,6 +18,11 @@ const SRC = join(ROOT, "src");
 const DIST = join(ROOT, "dist");
 const CONTENT = join(ROOT, "content");
 const DEV = process.argv.includes("--dev");
+// Commander (ruhan.lol) lives in the private hermes repo. It is built when that
+// repo is checked out next to this one, or when COMMANDER_DIR points at its
+// commander/ folder (as on the VM). Without it, only ruhan.bd is built.
+const CMD = process.env.COMMANDER_DIR ? resolve(process.env.COMMANDER_DIR) : resolve(ROOT, "..", "hermes", "commander");
+const CMD_DIST = join(ROOT, "dist-commander");
 
 // base styles load in this order, before any component
 const BASE_CSS = ["reset.css", "typography.css", "layout.css", "motion.css"];
@@ -124,8 +129,9 @@ const readContent = (name) => {
 function includes(html, ctx, from, depth = 0) {
   if (depth > 8) throw new Error(`include nesting too deep in ${from}`);
   return html.replace(/<!--\s*@include\s+(\S+)((?:\s+[a-z0-9-]+="[^"]*")*)\s*-->/gi, (_, file, attrs) => {
-    const path = join(SRC, file);
-    if (!existsSync(path)) throw new Error(`${relative(ROOT, from)}: can't include ${file}`);
+    // site partials first, then the Commander's own (components/cmd-*, partials/cmd-*)
+    const path = [join(SRC, file), join(CMD, file)].find((p) => existsSync(p));
+    if (!path) throw new Error(`${relative(ROOT, from)}: can't include ${file}`);
     const props = {};
     for (const [, k, v] of attrs.matchAll(/([a-z0-9-]+)="([^"]*)"/gi)) props[k] = v;
     return includes(render(read(path), ctx, props), ctx, path, depth + 1);
@@ -283,9 +289,6 @@ export function build() {
 // pages: commander/pages/*.html, plus commander/section.html once per section in
 // commander/sections.json → dist-commander/<id>/index.html. Its data is not
 // built here: Hermes writes /data/<id>.json on the VM.
-const CMD = join(ROOT, "commander");
-const CMD_DIST = join(ROOT, "dist-commander");
-
 function buildCommander(ctx) {
   const cfg = JSON.parse(read(join(CMD, "sections.json")));
   rmSync(CMD_DIST, { recursive: true, force: true });
@@ -302,8 +305,16 @@ function buildCommander(ctx) {
         join(CMD_DIST, s.id, "index.html"));
     }
   }
-  cpSync(join(DIST, "css"), join(CMD_DIST, "css"), { recursive: true });
-  cpSync(join(DIST, "js"), join(CMD_DIST, "js"), { recursive: true });
+  // the site bundle plus the Commander's own components (commander/components/cmd-*)
+  const own = (ext) => {
+    const dir = join(CMD, "components");
+    if (!existsSync(dir)) return [];
+    return readdirSync(dir).sort().map((d) => [d, join(dir, d, `${d}.${ext}`)]).filter(([, p]) => existsSync(p));
+  };
+  const css = own("css").map(([d, p]) => `/* ── commander/components/${d} */\n` + read(p)).join("\n");
+  write(join(CMD_DIST, "css", "site.css"), read(join(DIST, "css", "site.css")) + "\n" + expandMedia(ctx.tokens, css));
+  const js = own("js").map(([d, p]) => `/* ── commander/components/${d} */\n(() => {\n${render(read(p), ctx)}\n})();`).join("\n\n");
+  write(join(CMD_DIST, "js", "site.js"), read(join(DIST, "js", "site.js")) + "\n" + js + "\n");
   for (const f of readdirSync(join(SRC, "static")).filter((f) => f.startsWith("favicon"))) {
     cpSync(join(SRC, "static", f), join(CMD_DIST, f));
   }

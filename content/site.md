@@ -10,7 +10,7 @@ whatsapp-display: +880 1749-501010
 whatsapp-link: https://wa.me/8801749501010
 # every LinkedIn link uses this
 linkedin: https://www.linkedin.com/in/ruhan-mri/
-github: https://github.com/ruhanisworking
+github: https://github.com/itsmeruhan
 location: Dhaka, Bangladesh
 hours: Overlaps Australian business hours · overnight turnaround for the US
 og-image: /og/home.jpg
@@ -23,8 +23,8 @@ profiles:
     show: linkedin.com/in/ruhan-mri
     line: Work history and posts
   - name: GitHub
-    url: https://github.com/ruhanisworking
-    show: github.com/ruhanisworking
+    url: https://github.com/itsmeruhan
+    show: github.com/itsmeruhan
     line: Code and open-source work
 
 # "All pages" menu in the island and the footer's top solutions.

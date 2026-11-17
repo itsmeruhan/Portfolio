@@ -15,6 +15,9 @@ import { definedVars, readDesign, readFrontMatter } from "./lib/design.mjs";
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const SRC = join(ROOT, "src");
 const tokens = readDesign(join(ROOT, "DESIGN.md"));
+// the Commander lives in the private hermes repo (see tools/build.mjs)
+const CMD = process.env.COMMANDER_DIR ? resolve(process.env.COMMANDER_DIR) : resolve(ROOT, "..", "hermes", "commander");
+const CMD_COMPONENTS = join(CMD, "components");
 const tokenVars = definedVars(tokens);
 const problems = [];
 
@@ -42,7 +45,8 @@ const RULES = [
 ];
 
 // ── CSS ─────────────────────────────────────────────────────────────────────
-const cssFiles = [...files(join(SRC, "base"), ".css"), ...files(join(SRC, "components"), ".css")];
+const cssFiles = [...files(join(SRC, "base"), ".css"), ...files(join(SRC, "components"), ".css"),
+  ...(existsSync(CMD_COMPONENTS) ? files(CMD_COMPONENTS, ".css") : [])];
 const localVars = new Set();
 for (const f of cssFiles) for (const m of readFileSync(f, "utf8").matchAll(/(--[a-z0-9_-]+)\s*:/gi)) localVars.add(m[1]);
 
@@ -71,21 +75,22 @@ for (const f of cssFiles) {
 }
 
 // ── every component folder is declared in DESIGN.md ─────────────────────────
-for (const d of readdirSync(join(SRC, "components"))) {
-  if (!statSync(join(SRC, "components", d)).isDirectory()) continue;
-  if (!tokens.components?.[d]) say(join(SRC, "components", d), 0, `component "${d}" has no components.${d} entry in DESIGN.md`);
-  if (!existsSync(join(SRC, "components", d, `${d}.css`))) say(join(SRC, "components", d), 0, `missing ${d}.css`);
+const siteComponents = readdirSync(join(SRC, "components")).filter((d) => statSync(join(SRC, "components", d)).isDirectory());
+const cmdComponents = existsSync(CMD_COMPONENTS) ? readdirSync(CMD_COMPONENTS).filter((d) => statSync(join(CMD_COMPONENTS, d)).isDirectory()) : [];
+for (const [dir, d] of [...siteComponents.map((d) => [SRC + "/components", d]), ...cmdComponents.map((d) => [CMD_COMPONENTS, d])]) {
+  if (!tokens.components?.[d]) say(join(dir, d), 0, `component "${d}" has no components.${d} entry in DESIGN.md`);
+  if (!existsSync(join(dir, d, `${d}.css`))) say(join(dir, d), 0, `missing ${d}.css`);
 }
+// the public catalogue shows the site's components; the Commander's (cmd-*) live in the private repo
 const catalogue = join(SRC, "pages", "components.html");
 if (existsSync(catalogue)) {
   const html = readFileSync(catalogue, "utf8");
-  for (const d of Object.keys(tokens.components || {})) {
+  for (const d of siteComponents) {
     if (!html.includes(`data-component="${d}"`)) say(catalogue, 0, `catalogue has no data-component="${d}" section`);
   }
 }
 
 // ── markup: no inline styling ───────────────────────────────────────────────
-const CMD = join(ROOT, "commander");
 for (const f of [...files(SRC, ".html"), ...(existsSync(CMD) ? files(CMD, ".html") : [])]) {
   readFileSync(f, "utf8").split("\n").forEach((line, i) => {
     if (/\sstyle\s*=\s*"/i.test(line)) say(f, i + 1, 'inline style="" — put it in the component CSS');
